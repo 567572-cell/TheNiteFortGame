@@ -1,55 +1,95 @@
 using UnityEngine;
 
+[RequireComponent(typeof(CharacterController))]
 public class PlayerMovement : MonoBehaviour
 {
-   public float speed = 5f; // Movement speed
-   public float jumpForce = 5f; // Jump force
-   public float rotationSpeed = 100f; // Rotation speed
-   public LayerMask groundLayer; // Layer for ground detection
-   public Transform groundCheck; // Transform for ground check (empty GameObject at player's feet)
+    [Header("Movement")]
+    public float moveSpeed = 6f;
+    public float acceleration = 12f;
+    public float deceleration = 12f;
 
-   public float groundCheckDistance = 0.1f; // Distance for raycast to check for ground
+    [Header("Jumping")]
+    public float jumpHeight = 1.5f;
+    public float gravity = -9.81f;
+    public float fallMultiplier = 2f;
 
-   private Rigidbody rb;
-   private bool isGrounded;
+    [Header("Mouse Look")]
+    public float sensitivity = 120f;
+    public Transform cameraTransform;
+    public float minLookX = -70f;
+    public float maxLookX = 80f;
 
-   void Start()
-   {
-       rb = GetComponent<Rigidbody>();
-   }
+    private CharacterController controller;
+    private Vector3 velocity;
+    private Vector3 currentMove;
+    private float cameraPitch = 0f;
 
-   void Update()
-   {
-       // Movement input
-       float moveX = Input.GetAxis("Horizontal"); // A/D or Left/Right for strafing
-       float moveZ = Input.GetAxis("Vertical"); // W/S or Up/Down for forward/backward
+    void Start()
+    {
+        controller = GetComponent<CharacterController>();
+        Cursor.lockState = CursorLockMode.Locked;
+    }
 
-       Vector3 move = new Vector3(moveX, 0, moveZ) * speed;
-       move = transform.TransformDirection(move); // Adjust movement relative to player's direction
-       Vector3 velocity = rb.velocity;
-       velocity.x = move.x;
-       velocity.z = move.z;
-       rb.velocity = velocity;
+    void Update()
+    {
+        HandleMovement();
+        HandleGravity();
+        HandleJump();
+        HandleCameraLookWithArrows(); // <— new
 
-       // Rotation input (Left/Right or A/D)
-       float rotateInput = Input.GetAxis("Horizontal"); // A/D or Left/Right for rotation
-       float rotation = rotateInput * rotationSpeed * Time.deltaTime;
-       transform.Rotate(0, rotation, 0); // Rotate the player around Y-axis
+        controller.Move(velocity * Time.deltaTime);
+    }
 
-        // Jump input
-       isGrounded = Physics.CheckSphere(groundCheck.position, groundCheckDistance, groundLayer);
-       if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
-       {
-           rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-       }
-   }
 
-   void OnDrawGizmosSelected()
-   {
-       // Visualize raycast for ground check in editor
-       Gizmos.color = Color.green;
-       Gizmos.DrawLine(transform.position, transform.position + Vector3.down * groundCheckDistance);
-   }
+    void HandleMovement()
+    {
+        float x = Input.GetAxisRaw("Horizontal");
+        float z = Input.GetAxisRaw("Vertical");
+
+        Vector3 targetMove = (transform.right * x + transform.forward * z).normalized * moveSpeed;
+
+        // Smooth acceleration & deceleration
+        currentMove = Vector3.Lerp(currentMove, targetMove,
+            (targetMove.magnitude > 0 ? acceleration : deceleration) * Time.deltaTime);
+
+        velocity.x = currentMove.x;
+        velocity.z = currentMove.z;
+    }
+
+    void HandleGravity()
+    {
+        if (controller.isGrounded && velocity.y < 0)
+            velocity.y = -2f; // keep grounded
+
+        // Apply gravity
+        velocity.y += gravity * (velocity.y < 0 ? fallMultiplier : 1f) * Time.deltaTime;
+    }
+
+    void HandleJump()
+    {
+        if (Input.GetButtonDown("Jump") && controller.isGrounded)
+        {
+            velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+        }
+    }
+
+    void HandleCameraLookWithArrows()
+    {
+        float lookX = Input.GetKey(KeyCode.RightArrow) ? 1 :
+                      Input.GetKey(KeyCode.LeftArrow) ? -1 : 0;
+
+        float lookY = Input.GetKey(KeyCode.UpArrow) ? 1 :
+                      Input.GetKey(KeyCode.DownArrow) ? -1 : 0;
+
+        // Horizontal rotation (left/right) rotates the PLAYER
+        transform.Rotate(Vector3.up * lookX * sensitivity * Time.deltaTime);
+
+        // Vertical rotation (up/down) rotates the CAMERA only
+        cameraPitch -= lookY * sensitivity * Time.deltaTime;
+        cameraPitch = Mathf.Clamp(cameraPitch, minLookX, maxLookX);
+
+        cameraTransform.localRotation = Quaternion.Euler(cameraPitch, 0f, 0f);
+    }
+
+
 }
-
-
